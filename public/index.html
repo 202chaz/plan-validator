@@ -5,7 +5,10 @@
         <link rel="stylesheet" href="styles/main.css">
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
         <script src="js/main.js"  crossorigin="anonymous"></script>
+        <!-- Parse excel files -->
         <script src="https://unpkg.com/read-excel-file@5.x/bundle/read-excel-file.min.js"></script>
+        <!-- Make http request -->
+        <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     </head>
 <body>
 
@@ -30,7 +33,9 @@
         <div class="col-4">
             <h3>PBT</h3>
             <div class="input-group mb-3">
-                <input type="file" class="form-control" id="pbt" name="doc" onchange="parseFile('pbt')">
+                <form enctype="multipart/form-data" method="post" name="pbtinfo">
+                    <input type="file" class="form-control" id="pbt" name="pbt" onchange="parseFile('pbt')">
+                </form>
             </div>
             <table class="table table-bordered table-striped">
                 <thead>
@@ -46,7 +51,9 @@
         <div class="col-4">
             <h3>SBC</h3>
             <div class="input-group mb-3">
-                <input type="file" class="form-control" id="sbc" name="doc" onchange="parseFile('sbc')">
+                <form enctype="multipart/form-data" method="post" name="sbcinfo">
+                    <input type="file" class="form-control" id="sbc" name="sbc" onchange="parseFile('sbc')">
+                </form>
             </div>
             <table class="table table-bordered table-striped">
                 <thead>
@@ -62,7 +69,9 @@
         <div class="col-4">
             <h3>SOB</h3>
             <div class="input-group mb-3">
-                <input type="file" class="form-control" id="sob" name="doc" onchange="parseFile('sob')">
+                <form enctype="multipart/form-data" method="post" name="sobinfo">
+                    <input type="file" class="form-control" id="sob" name="sob" onchange="parseFile('sob')">
+                </form>
             </div>
             <table class="table table-bordered table-striped">
                 <thead>
