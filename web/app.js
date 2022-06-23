@@ -7,11 +7,14 @@ const pdfjs = require("pdfjs-dist/legacy/build/pdf.js");
 const multer  = require('multer')
 const carriers = ['aetna', 'cigna', 'unitedhealth', 'anthem', 'carefirst', 'blue cross'] 
 const xlsx = require('xlsx')
+const fs = require('fs')
 let planInfo = {};
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, './uploads/')
+    const path = './uploads'
+    fs.mkdirSync(path, { recursive: true })
+    cb(null, path)
   },
   filename: function (req, file, cb) {
       cb(null,  file.originalname );
