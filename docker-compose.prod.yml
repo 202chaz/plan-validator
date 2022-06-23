@@ -9,6 +9,8 @@ services:
       - '3000:3000'
     networks:
       - hbx-network
+    volumes:
+      - ./uploads:/usr/src/app/plan-validator/web
   nginx:
     restart: always
     build:
