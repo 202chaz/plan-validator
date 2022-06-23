@@ -1,15 +1,119 @@
+let selectOptions;
+let pbtFilename;
+
 function parseFile(type) {
     const input = document.getElementById(type);
     const arr = input.files[0].name.split('.');
     const fileType = arr.pop()
     // Verifies the file is an excel file
     if (fileType === 'xlsm' || fileType === 'xls' || fileType === 'xlsx' || fileType === 'pdf') {
-        if (type === 'pbt') parsePBT(input)
+        if (type === 'pbt' && fileType === 'xlsx' || fileType === 'xlsm' || fileType === 'xls') parsePBT(input)
         if (type === 'sbc') parseSBC(input)
         if (type === 'sob') parseSOB(input)
     } else {
         return console.error('Please upload an excel file');
     }
+}
+
+function getPlanInformation(hiosId) {
+  let select = document.getElementById("plan-select");
+  let value = select.value
+  let selectedOption = selectOptions.find(option => option.key === value)
+  getCostShareForPlan(selectedOption, pbtFilename)
+}
+
+function clearTableData() {
+	let titleRows = document.querySelectorAll('.title-row');
+	titleRows.forEach(row => row.remove())
+	let mainRows = document.querySelectorAll('.main-row');
+	mainRows.forEach(row => row.remove())
+	let subRows = document.querySelectorAll('.sub-row');
+	subRows.forEach(row => row.remove())
+	let hrRows = document.querySelectorAll('.hr-row');
+	hrRows.forEach(row => row.remove())
+}
+
+function getCostShareForPlan(option, filename) {
+  axios.get(`/costvariances/${option.key}/${option.name}/${option.sheet}/${filename}`)
+    .then(res => {
+      let pbtHeaderOptions = sessionStorage.getItem('pbt-options');
+      pbtHeaderOptions = JSON.parse(pbtHeaderOptions)
+      let planData = res.data.data;
+      let titles = pbtHeaderOptions.tableTitlesRow[0];
+      let headings = pbtHeaderOptions.tableHeadingRow[0];
+			let subHeadings = pbtHeaderOptions.tableSubHeadingRow[0];
+
+      document.getElementById('pbt-hios').innerHTML = `HIOS: ${planData[0]}`;
+      document.getElementById('pbt-metal-level').innerHTML = `Metal Level: ${planData[2]}`;
+			clearTableData()
+			
+      let tableBody = document.getElementById('pbt-body');
+      titles.map((title, index) => {
+        if (index > 0 && title !== '' && !title.includes('SBC Scenario')) {
+          let tr = document.createElement('tr')
+					let hr = document.createElement('hr')
+					hr.classList.add('hr-row')
+          tr.setAttribute('index', index)
+          tr.classList.add('title-row')
+          let th = document.createElement('th')
+          th.setAttribute('scope', 'row')
+          th.innerText = `${title}`
+          th.classList.add('title-heading')
+          th.setAttribute('colspan', 2)
+          th.setAttribute('index', index)
+					hr.setAttribute('index', index)
+          tr.append(th)
+          tableBody.append(tr)
+					tableBody.append(hr)
+        }
+      })
+
+      let tableTitles = document.querySelectorAll('.hr-row')
+      tableTitles.forEach((title, acc) => {
+        let index = title.getAttribute('index')
+        let upToIndex = tableTitles[acc + 1] ? tableTitles[acc + 1].getAttribute('index') : '';
+        headings.map((heading, i) => {
+          if (i <= 22) return
+          if (heading !== '' && i >= index && i < upToIndex) {
+            let tr = document.createElement('tr');
+						let hr = document.createElement('hr');
+						hr.classList.add('hr-main-row')
+            tr.setAttribute('data-index', i)
+            tr.classList.add('main-row')
+            let th = document.createElement('th')
+            th.setAttribute('scope', 'row')
+            th.innerText = `${heading}`
+            th.classList.add('main-heading')
+            th.setAttribute('colspan', 2)
+            th.setAttribute('index', i)
+            let r = tr.append(th)
+            title.before(tr)
+          }
+        })
+      })
+
+			let tableSubTitles = document.querySelectorAll('.main-row')
+			tableSubTitles.forEach((title, acc) => {
+				let index = title.getAttribute('data-index');
+				let nextIndex = tableSubTitles[acc + 1] ? tableSubTitles[acc + 1].getAttribute('data-index') : '';
+				subHeadings.map((heading, i) => {
+					if (i <= 22) return;
+					if (i >= index && i < nextIndex) {
+						let tr = document.createElement('tr');
+						tr.setAttribute('index', i)
+						tr.classList.add('sub-row')
+						let tdOne = document.createElement('td')
+						let tdTwo = document.createElement('td')
+						tdTwo.classList.add('data-value')
+						tdOne.innerText = `${heading}`
+						tdTwo.innerText = `${planData[i]}`
+						tr.append(tdOne)
+						tr.append(tdTwo)
+						title.after(tr)
+					}					
+				})
+			})
+    })
 }
 
 async function parsePBT(input) {
@@ -23,201 +127,26 @@ async function parsePBT(input) {
     })
     .then(res => {
         let data = res.data;
-        sessionStorage.setItem('table-data', JSON.stringify(data))
-        let tableBody = document.getElementById('pbt-body');
-        data.headers.benefitsPackage.map((benefit, index) => {
-            let tr = document.createElement('tr');
-            tr.setAttribute('index', index)
-            tr.classList.add('benefit-row')
-            let th = document.createElement('th')
-            th.setAttribute('scope', 'row')
-            th.innerText = `${benefit.name}`
-            th.classList.add('benefit-heading')
-            th.setAttribute('colspan', 2)
-            th.setAttribute('index', index)
-            tr.append(th)
-            tableBody.append(tr)
-        })
-
-        let tableHeadings = document.querySelectorAll('.benefit-row')
-        tableHeadings.forEach((heading) => {
-            let tableData = data.tableData.benefitsPackage;
-            tableData.map((data) => {
-                let tr = document.createElement('tr');
-                let td = document.createElement('td');
-                td.innerText = `${data.key}`;
-                let tdTwo = document.createElement('td');
-                tdTwo.innerText = `${data.value}`;
-                tr.appendChild(td)
-                tr.appendChild(tdTwo)
-                // Plan Identifiers
-                if (data.index <= 5 && heading.getAttribute('index') == 0) {
-                    heading.after(tr)
-                }
-                // Plan Attributes
-                if (data.index >= 6 && data.index <= 22 && heading.getAttribute('index') == 1) {
-                    heading.after(tr)
-                }
-                // Stand Alone Dental
-                if (data.index >= 23 && data.index <= 24 && heading.getAttribute('index') == 2) {
-                    heading.after(tr)
-                }
-                // Plan Dates
-                if (data.index >= 25 && data.index <= 26 && heading.getAttribute('index') == 3) {
-                    heading.after(tr)
-                }
-                // Geographic Coverage
-                if (data.index >= 27 && data.index <= 31 && heading.getAttribute('index') == 4) {
-                    heading.after(tr)
-                }
-            })
-
-        })
-
-        data.headers.costShare.map((cost, index) => {
-            let tr = document.createElement('tr');
-            tr.setAttribute('index', index)
-            tr.classList.add('cost-row')
-            let th = document.createElement('th')
-            th.setAttribute('scope', 'row')
-            th.innerText = `${cost.name}`
-            th.classList.add('cost-heading')
-            th.setAttribute('colspan', 2)
-            th.setAttribute('index', index)
-            tr.append(th)
-            tableBody.append(tr)
-        })
-
-        let costHeadings = document.querySelectorAll('.cost-row')
-        costHeadings.forEach((heading) => {
-            let tableData = data.tableData.costShare;
-            tableData.map((data) => {
-                let tr = document.createElement('tr');
-                let td = document.createElement('td');
-                td.innerText = `${data.key}`;
-                let tdTwo = document.createElement('td');
-                tdTwo.innerText = `${data.value}`;
-                tr.appendChild(td)
-                tr.appendChild(tdTwo)
-                // Plan Cost Sharing Attributes
-                if (data.index <= 10 && heading.getAttribute('index') == 0) {
-                    heading.after(tr)
-                }
-                // Having A Baby
-                if (data.index >= 11 && data.index <= 14 && heading.getAttribute('index') == 1) {
-                    heading.after(tr)
-                }
-                // Having Diabetes
-                if (data.index >= 15 && data.index <= 18 && heading.getAttribute('index') == 2) {
-                    heading.after(tr)
-                }
-                // Treatment of a Simple Fracture
-                if (data.index >= 19 && data.index <= 22 && heading.getAttribute('index') == 3) {
-                    heading.after(tr)
-                }
-                // In Network
-                if (data.index >= 23 && data.index <= 24 && heading.getAttribute('index') == 4) {
-                    heading.after(tr)
-                }
-                // In Network (Tier 2)
-                if (data.index >= 25 && data.index <= 26 && heading.getAttribute('index') == 5) {
-                    heading.after(tr)
-                }
-                // Out of Network
-                if (data.index >= 27 && data.index <= 28 && heading.getAttribute('index') == 6) {
-                    heading.after(tr)
-                }
-                // Combined In/Out Network
-                if (data.index >= 29 && data.index <= 30 && heading.getAttribute('index') == 7) {
-                    heading.after(tr)
-                }
-                // In Network
-                if (data.index >= 31 && data.index <= 32 && heading.getAttribute('index') == 8) {
-                    heading.after(tr)
-                }
-                // In Network (Tier 2)
-                if (data.index >= 33 && data.index <= 34 && heading.getAttribute('index') == 9) {
-                    heading.after(tr)
-                }
-                // Out of Network
-                if (data.index >= 35 && data.index <= 36 && heading.getAttribute('index') == 10) {
-                    heading.after(tr)
-                }
-                // Combined In/Out Network
-                if (data.index >= 37 && data.index <= 38 && heading.getAttribute('index') == 11) {
-                    heading.after(tr)
-                }
-                // In Network
-                if (data.index >= 39 && data.index <= 40 && heading.getAttribute('index') == 12) {
-                    heading.after(tr)
-                }
-                // In Network (Tier 2)
-                if (data.index >= 41 && data.index <= 42 && heading.getAttribute('index') == 13) {
-                    heading.after(tr)
-                }
-                // Out of Network
-                if (data.index >= 43 && data.index <= 44 && heading.getAttribute('index') == 14) {
-                    heading.after(tr)
-                }
-                // Combined In/Out Network
-                if (data.index >= 45 && data.index <= 46 && heading.getAttribute('index') == 15) {
-                    heading.after(tr)
-                }
-                // In Network
-                if (data.index >= 47 && data.index <= 49 && heading.getAttribute('index') == 16) {
-                    heading.after(tr)
-                }
-                // In Network (Tier 2)
-                if (data.index >= 50 && data.index <= 52 && heading.getAttribute('index') == 17) {
-                    heading.after(tr)
-                }
-                // Out of Network
-                if (data.index >= 53 && data.index <= 54 && heading.getAttribute('index') == 18) {
-                    heading.after(tr)
-                }
-                // Combined In/Out Network
-                if (data.index >= 55 && data.index <= 56 && heading.getAttribute('index') == 19) {
-                    heading.after(tr)
-                }
-                // In Network
-                if (data.index >= 57 && data.index <= 59 && heading.getAttribute('index') == 20) {
-                    heading.after(tr)
-                }
-                // In Network (Tier 2)
-                if (data.index >= 60 && data.index <= 62 && heading.getAttribute('index') == 21) {
-                    heading.after(tr)
-                }
-                // Out of Network
-                if (data.index >= 63 && data.index <= 64 && heading.getAttribute('index') == 22) {
-                    heading.after(tr)
-                }
-                // Combined In/Out Network
-                if (data.index >= 65 && data.index <= 66 && heading.getAttribute('index') == 23) {
-                    heading.after(tr)
-                }
-                // In Network
-                if (data.index >= 67 && data.index <= 69 && heading.getAttribute('index') == 24) {
-                    heading.after(tr)
-                }
-                // In Network (Tier 2)
-                if (data.index >= 70 && data.index <= 72 && heading.getAttribute('index') == 25) {
-                    heading.after(tr)
-                }
-                // Out of Network
-                if (data.index >= 73 && data.index <= 74 && heading.getAttribute('index') == 26) {
-                    heading.after(tr)
-                }
-                // Combined In/Out Network
-                if (data.index >= 75 && data.index <= 76 && heading.getAttribute('index') == 27) {
-                    heading.after(tr)
-                }
-                // No title
-                if (data.index >= 77 && data.index <= 79 && heading.getAttribute('index') == 28) {
-                    heading.after(tr)
-                }
-            })
-            // 
-        })
+        sessionStorage.setItem('pbt-options', JSON.stringify(data))
+        selectOptions = data.selectOptions;
+        pbtFilename = data.filename.split('/')[1];
+        if (selectOptions.length >=1 ) {
+          let select = document.getElementById("plan-select");
+					// Clear existing select options
+					Array.from(select.options).forEach((option, index) => {
+						if (index > 0) option.remove()
+					})
+          select.classList.remove('d-none')
+          selectOptions.map((o) => {
+            let option = document.createElement("option");
+            option.text = o.name;
+            option.value = o.key;
+            select.appendChild(option);
+          })
+        }
+      // Enable SOB and SBC input fields
+      document.getElementById('sob').removeAttribute('disabled');
+      document.getElementById('sbc').removeAttribute('disabled');
     })
 }
 
@@ -231,209 +160,21 @@ function parseSBC(input) {
             }
         })
         .then(res => {
-            // const data = res.data.cost
-            let tableBuilder = sessionStorage.getItem('table-data')
-            tableBuilder = JSON.parse(tableBuilder)
-            let sbcTable = document.getElementById('sbc-body');
-
-            tableBuilder.headers.benefitsPackage.map((benefit, index) => {
-                let tr = document.createElement('tr');
-                tr.setAttribute('index', index)
-                tr.classList.add('sbc-benefit-row')
-                let th = document.createElement('th')
-                th.setAttribute('scope', 'row')
-                th.innerText = `${benefit.name}`
-                th.classList.add('sbc-benefit-heading')
-                th.setAttribute('colspan', 2)
-                th.setAttribute('index', index)
-                tr.append(th)
-                sbcTable.append(tr)
-            })
-    
-            let tableHeadings = document.querySelectorAll('.sbc-benefit-row')
-            tableHeadings.forEach((heading) => {
-                let tableData = tableBuilder.tableData.benefitsPackage;
-                tableData.map((data) => {
-                    let tr = document.createElement('tr');
-                    let td = document.createElement('td');
-                    td.innerText = `${data.key}`;
-                    let tdTwo = document.createElement('td');
-                    tdTwo.innerText = `${data.value}`;
-                    tr.appendChild(td)
-                    tr.appendChild(tdTwo)
-                    // Plan Identifiers
-                    if (data.index <= 5 && heading.getAttribute('index') == 0) {
-                        heading.after(tr)
-                    }
-                    // Plan Attributes
-                    if (data.index >= 6 && data.index <= 22 && heading.getAttribute('index') == 1) {
-                        heading.after(tr)
-                    }
-                    // Stand Alone Dental
-                    if (data.index >= 23 && data.index <= 24 && heading.getAttribute('index') == 2) {
-                        heading.after(tr)
-                    }
-                    // Plan Dates
-                    if (data.index >= 25 && data.index <= 26 && heading.getAttribute('index') == 3) {
-                        heading.after(tr)
-                    }
-                    // Geographic Coverage
-                    if (data.index >= 27 && data.index <= 31 && heading.getAttribute('index') == 4) {
-                        heading.after(tr)
-                    }
-                })
-    
-            })
-    
-            tableBuilder.headers.costShare.map((cost, index) => {
-                let tr = document.createElement('tr');
-                tr.setAttribute('index', index)
-                tr.classList.add('sbc-cost-row')
-                let th = document.createElement('th')
-                th.setAttribute('scope', 'row')
-                th.innerText = `${cost.name}`
-                th.classList.add('sbc-cost-heading')
-                th.setAttribute('colspan', 2)
-                th.setAttribute('index', index)
-                tr.append(th)
-                sbcTable.append(tr)
-            })
-    
-            let costHeadings = document.querySelectorAll('.sbc-cost-row')
-            costHeadings.forEach((heading) => {
-                let tableData = tableBuilder.tableData.costShare;
-                tableData.map((data) => {
-                    let tr = document.createElement('tr');
-                    let td = document.createElement('td');
-                    td.innerText = `${data.key}`;
-                    let tdTwo = document.createElement('td');
-                    tdTwo.innerText = `${data.value}`;
-                    tr.appendChild(td)
-                    tr.appendChild(tdTwo)
-                    // Plan Cost Sharing Attributes
-                    if (data.index <= 10 && heading.getAttribute('index') == 0) {
-                        heading.after(tr)
-                    }
-                    // Having A Baby
-                    if (data.index >= 11 && data.index <= 14 && heading.getAttribute('index') == 1) {
-                        heading.after(tr)
-                    }
-                    // Having Diabetes
-                    if (data.index >= 15 && data.index <= 18 && heading.getAttribute('index') == 2) {
-                        heading.after(tr)
-                    }
-                    // Treatment of a Simple Fracture
-                    if (data.index >= 19 && data.index <= 22 && heading.getAttribute('index') == 3) {
-                        heading.after(tr)
-                    }
-                    // In Network
-                    if (data.index >= 23 && data.index <= 24 && heading.getAttribute('index') == 4) {
-                        heading.after(tr)
-                    }
-                    // In Network (Tier 2)
-                    if (data.index >= 25 && data.index <= 26 && heading.getAttribute('index') == 5) {
-                        heading.after(tr)
-                    }
-                    // Out of Network
-                    if (data.index >= 27 && data.index <= 28 && heading.getAttribute('index') == 6) {
-                        heading.after(tr)
-                    }
-                    // Combined In/Out Network
-                    if (data.index >= 29 && data.index <= 30 && heading.getAttribute('index') == 7) {
-                        heading.after(tr)
-                    }
-                    // In Network
-                    if (data.index >= 31 && data.index <= 32 && heading.getAttribute('index') == 8) {
-                        heading.after(tr)
-                    }
-                    // In Network (Tier 2)
-                    if (data.index >= 33 && data.index <= 34 && heading.getAttribute('index') == 9) {
-                        heading.after(tr)
-                    }
-                    // Out of Network
-                    if (data.index >= 35 && data.index <= 36 && heading.getAttribute('index') == 10) {
-                        heading.after(tr)
-                    }
-                    // Combined In/Out Network
-                    if (data.index >= 37 && data.index <= 38 && heading.getAttribute('index') == 11) {
-                        heading.after(tr)
-                    }
-                    // In Network
-                    if (data.index >= 39 && data.index <= 40 && heading.getAttribute('index') == 12) {
-                        heading.after(tr)
-                    }
-                    // In Network (Tier 2)
-                    if (data.index >= 41 && data.index <= 42 && heading.getAttribute('index') == 13) {
-                        heading.after(tr)
-                    }
-                    // Out of Network
-                    if (data.index >= 43 && data.index <= 44 && heading.getAttribute('index') == 14) {
-                        heading.after(tr)
-                    }
-                    // Combined In/Out Network
-                    if (data.index >= 45 && data.index <= 46 && heading.getAttribute('index') == 15) {
-                        heading.after(tr)
-                    }
-                    // In Network
-                    if (data.index >= 47 && data.index <= 49 && heading.getAttribute('index') == 16) {
-                        heading.after(tr)
-                    }
-                    // In Network (Tier 2)
-                    if (data.index >= 50 && data.index <= 52 && heading.getAttribute('index') == 17) {
-                        heading.after(tr)
-                    }
-                    // Out of Network
-                    if (data.index >= 53 && data.index <= 54 && heading.getAttribute('index') == 18) {
-                        heading.after(tr)
-                    }
-                    // Combined In/Out Network
-                    if (data.index >= 55 && data.index <= 56 && heading.getAttribute('index') == 19) {
-                        heading.after(tr)
-                    }
-                    // In Network
-                    if (data.index >= 57 && data.index <= 59 && heading.getAttribute('index') == 20) {
-                        heading.after(tr)
-                    }
-                    // In Network (Tier 2)
-                    if (data.index >= 60 && data.index <= 62 && heading.getAttribute('index') == 21) {
-                        heading.after(tr)
-                    }
-                    // Out of Network
-                    if (data.index >= 63 && data.index <= 64 && heading.getAttribute('index') == 22) {
-                        heading.after(tr)
-                    }
-                    // Combined In/Out Network
-                    if (data.index >= 65 && data.index <= 66 && heading.getAttribute('index') == 23) {
-                        heading.after(tr)
-                    }
-                    // In Network
-                    if (data.index >= 67 && data.index <= 69 && heading.getAttribute('index') == 24) {
-                        heading.after(tr)
-                    }
-                    // In Network (Tier 2)
-                    if (data.index >= 70 && data.index <= 72 && heading.getAttribute('index') == 25) {
-                        heading.after(tr)
-                    }
-                    // Out of Network
-                    if (data.index >= 73 && data.index <= 74 && heading.getAttribute('index') == 26) {
-                        heading.after(tr)
-                    }
-                    // Combined In/Out Network
-                    if (data.index >= 75 && data.index <= 76 && heading.getAttribute('index') == 27) {
-                        heading.after(tr)
-                    }
-                    // No title
-                    if (data.index >= 77 && data.index <= 79 && heading.getAttribute('index') == 28) {
-                        heading.after(tr)
-                    }
-                })
-                // 
-            })
-
-            // Clears form input
-            document.getElementById('sbc').value = '';
-            // Checks tables data
-            // compareTables()
+            const data = res.data
+            console.log(data)
+						let table = document.getElementById('pbt-body');
+						let copy = table.cloneNode(true);
+            copy.id = 'sbc-body';
+						let fields = copy.querySelectorAll('.data-value');
+						fields.forEach(field => field.innerText = '')
+            let sbcTable = document.getElementById('sbc-table').appendChild(copy);
+            let ml = document.getElementById('sbc-metal-level');
+            let hios = document.getElementById('sbc-hios');
+            ml.innerHTML = `Metal Level: ${data.levelOfCoverage}`;
+            hios.innerHTML = `HIOS: N/A`;
+            let select = document.getElementById('sbc-select');
+            select.options[0].text = `${data.name}`;
+            select.classList.remove('d-none')
         })
         .catch(err => console.log(err));
 }
@@ -448,210 +189,39 @@ function parseSOB(input) {
             }
         })
         .then(res => {
-            const data = res.data.cost
-            let tableBuilder = sessionStorage.getItem('table-data')
-            tableBuilder = JSON.parse(tableBuilder)
+          console.log('Making Request');
+          console.log(res);
+          let data = res.data;
+					let table = document.getElementById('pbt-body');
+					let copy = table.cloneNode(true);
+					let fields = copy.querySelectorAll('.data-value');
+					fields.forEach(field => {
+            let tr = field.closest('tr');
+            let index = tr.getAttribute('index')
+            console.log(tr)
+            console.log(field)
+            console.log('Index ', index);
 
-            let sobTable = document.getElementById('sob-body');
+            if (index == 39) field.innerText = data['Maximum Out of Pocket for Medical and Drug EHB Benefits (Total)']['deductible']['individual'][0];
+            if (index == 40) field.innerText = data['Maximum Out of Pocket for Medical and Drug EHB Benefits (Total)']['deductible']['family'][0];
+            if (index == 43) field.innerText = data['Maximum Out of Pocket for Medical and Drug EHB Benefits (Total)']['deductible']['individual'][1];
+            if (index == 44) field.innerText = data['Maximum Out of Pocket for Medical and Drug EHB Benefits (Total)']['deductible']['family'][1];
+            if (index == 53) field.innerText = data['Medical EHB Deductible']['deductible']['individual'][0];
+            if (index == 54) field.innerText = data['Medical EHB Deductible']['deductible']['family'][0];
+            if (index == 111) field.innerText = data['Primary Care Visit to Treat an Injury or Illness']['physicianOffice']['pcp'];
+            if (index == 116) field.innerText = data['Primary Care Visit to Treat an Injury or Illness']['physicianOffice']['percentages'][0];
+            if (index == 117) field.innerText = data['Primary Care Visit to Treat an Injury or Illness']['physicianOffice']['specialist'];
+            if (index == 122) field.innerText = data['Primary Care Visit to Treat an Injury or Illness']['physicianOffice']['percentages'][0];
+            
+            // field.innerText = ''
+          })
+					let sbcTable = document.getElementById('sob-table').appendChild(copy);
+          //Updates
+          document.getElementById("sob-option").innerHTML = data.plan;
+          document.getElementById('sob-select').classList.remove('d-none');
+          document.getElementById('sob-hios').innerHTML = `HIOS: N/A`;
+          document.getElementById('sob-metal-level').innerHTML = `Metal Level: ${data.metalLevel}`
 
-            tableBuilder.headers.benefitsPackage.map((benefit, index) => {
-                let tr = document.createElement('tr');
-                tr.setAttribute('index', index)
-                tr.classList.add('sob-benefit-row')
-                let th = document.createElement('th')
-                th.setAttribute('scope', 'row')
-                th.innerText = `${benefit.name}`
-                th.classList.add('sob-benefit-heading')
-                th.setAttribute('colspan', 2)
-                th.setAttribute('index', index)
-                tr.append(th)
-                sobTable.append(tr)
-            })
-    
-            let tableHeadings = document.querySelectorAll('.sob-benefit-row')
-            tableHeadings.forEach((heading) => {
-                let tableData = tableBuilder.tableData.benefitsPackage;
-                tableData.map((data) => {
-                    let tr = document.createElement('tr');
-                    let td = document.createElement('td');
-                    td.innerText = `${data.key}`;
-                    let tdTwo = document.createElement('td');
-                    tdTwo.innerText = `${data.value}`;
-                    tr.appendChild(td)
-                    tr.appendChild(tdTwo)
-                    // Plan Identifiers
-                    if (data.index <= 5 && heading.getAttribute('index') == 0) {
-                        heading.after(tr)
-                    }
-                    // Plan Attributes
-                    if (data.index >= 6 && data.index <= 22 && heading.getAttribute('index') == 1) {
-                        heading.after(tr)
-                    }
-                    // Stand Alone Dental
-                    if (data.index >= 23 && data.index <= 24 && heading.getAttribute('index') == 2) {
-                        heading.after(tr)
-                    }
-                    // Plan Dates
-                    if (data.index >= 25 && data.index <= 26 && heading.getAttribute('index') == 3) {
-                        heading.after(tr)
-                    }
-                    // Geographic Coverage
-                    if (data.index >= 27 && data.index <= 31 && heading.getAttribute('index') == 4) {
-                        heading.after(tr)
-                    }
-                })
-    
-            })
-    
-            tableBuilder.headers.costShare.map((cost, index) => {
-                let tr = document.createElement('tr');
-                tr.setAttribute('index', index)
-                tr.classList.add('sob-cost-row')
-                let th = document.createElement('th')
-                th.setAttribute('scope', 'row')
-                th.innerText = `${cost.name}`
-                th.classList.add('sob-cost-heading')
-                th.setAttribute('colspan', 2)
-                th.setAttribute('index', index)
-                tr.append(th)
-                sobTable.append(tr)
-            })
-    
-            let costHeadings = document.querySelectorAll('.sob-cost-row')
-            costHeadings.forEach((heading) => {
-                let tableData = tableBuilder.tableData.costShare;
-                tableData.map((data) => {
-                    let tr = document.createElement('tr');
-                    let td = document.createElement('td');
-                    td.innerText = `${data.key}`;
-                    let tdTwo = document.createElement('td');
-                    tdTwo.innerText = `${data.value}`;
-                    tr.appendChild(td)
-                    tr.appendChild(tdTwo)
-                    // Plan Cost Sharing Attributes
-                    if (data.index <= 10 && heading.getAttribute('index') == 0) {
-                        heading.after(tr)
-                    }
-                    // Having A Baby
-                    if (data.index >= 11 && data.index <= 14 && heading.getAttribute('index') == 1) {
-                        heading.after(tr)
-                    }
-                    // Having Diabetes
-                    if (data.index >= 15 && data.index <= 18 && heading.getAttribute('index') == 2) {
-                        heading.after(tr)
-                    }
-                    // Treatment of a Simple Fracture
-                    if (data.index >= 19 && data.index <= 22 && heading.getAttribute('index') == 3) {
-                        heading.after(tr)
-                    }
-                    // In Network
-                    if (data.index >= 23 && data.index <= 24 && heading.getAttribute('index') == 4) {
-                        heading.after(tr)
-                    }
-                    // In Network (Tier 2)
-                    if (data.index >= 25 && data.index <= 26 && heading.getAttribute('index') == 5) {
-                        heading.after(tr)
-                    }
-                    // Out of Network
-                    if (data.index >= 27 && data.index <= 28 && heading.getAttribute('index') == 6) {
-                        heading.after(tr)
-                    }
-                    // Combined In/Out Network
-                    if (data.index >= 29 && data.index <= 30 && heading.getAttribute('index') == 7) {
-                        heading.after(tr)
-                    }
-                    // In Network
-                    if (data.index >= 31 && data.index <= 32 && heading.getAttribute('index') == 8) {
-                        heading.after(tr)
-                    }
-                    // In Network (Tier 2)
-                    if (data.index >= 33 && data.index <= 34 && heading.getAttribute('index') == 9) {
-                        heading.after(tr)
-                    }
-                    // Out of Network
-                    if (data.index >= 35 && data.index <= 36 && heading.getAttribute('index') == 10) {
-                        heading.after(tr)
-                    }
-                    // Combined In/Out Network
-                    if (data.index >= 37 && data.index <= 38 && heading.getAttribute('index') == 11) {
-                        heading.after(tr)
-                    }
-                    // In Network
-                    if (data.index >= 39 && data.index <= 40 && heading.getAttribute('index') == 12) {
-                        heading.after(tr)
-                    }
-                    // In Network (Tier 2)
-                    if (data.index >= 41 && data.index <= 42 && heading.getAttribute('index') == 13) {
-                        heading.after(tr)
-                    }
-                    // Out of Network
-                    if (data.index >= 43 && data.index <= 44 && heading.getAttribute('index') == 14) {
-                        heading.after(tr)
-                    }
-                    // Combined In/Out Network
-                    if (data.index >= 45 && data.index <= 46 && heading.getAttribute('index') == 15) {
-                        heading.after(tr)
-                    }
-                    // In Network
-                    if (data.index >= 47 && data.index <= 49 && heading.getAttribute('index') == 16) {
-                        heading.after(tr)
-                    }
-                    // In Network (Tier 2)
-                    if (data.index >= 50 && data.index <= 52 && heading.getAttribute('index') == 17) {
-                        heading.after(tr)
-                    }
-                    // Out of Network
-                    if (data.index >= 53 && data.index <= 54 && heading.getAttribute('index') == 18) {
-                        heading.after(tr)
-                    }
-                    // Combined In/Out Network
-                    if (data.index >= 55 && data.index <= 56 && heading.getAttribute('index') == 19) {
-                        heading.after(tr)
-                    }
-                    // In Network
-                    if (data.index >= 57 && data.index <= 59 && heading.getAttribute('index') == 20) {
-                        heading.after(tr)
-                    }
-                    // In Network (Tier 2)
-                    if (data.index >= 60 && data.index <= 62 && heading.getAttribute('index') == 21) {
-                        heading.after(tr)
-                    }
-                    // Out of Network
-                    if (data.index >= 63 && data.index <= 64 && heading.getAttribute('index') == 22) {
-                        heading.after(tr)
-                    }
-                    // Combined In/Out Network
-                    if (data.index >= 65 && data.index <= 66 && heading.getAttribute('index') == 23) {
-                        heading.after(tr)
-                    }
-                    // In Network
-                    if (data.index >= 67 && data.index <= 69 && heading.getAttribute('index') == 24) {
-                        heading.after(tr)
-                    }
-                    // In Network (Tier 2)
-                    if (data.index >= 70 && data.index <= 72 && heading.getAttribute('index') == 25) {
-                        heading.after(tr)
-                    }
-                    // Out of Network
-                    if (data.index >= 73 && data.index <= 74 && heading.getAttribute('index') == 26) {
-                        heading.after(tr)
-                    }
-                    // Combined In/Out Network
-                    if (data.index >= 75 && data.index <= 76 && heading.getAttribute('index') == 27) {
-                        heading.after(tr)
-                    }
-                    // No title
-                    if (data.index >= 77 && data.index <= 79 && heading.getAttribute('index') == 28) {
-                        heading.after(tr)
-                    }
-                })
-                // 
-            })
- 
-            // Clears form input
-            document.getElementById('sob').value = '';
-            // Checks tables data
-            // compareTables()
         })
         .catch(err => console.log(err));
 }

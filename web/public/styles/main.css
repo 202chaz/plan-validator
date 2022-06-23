@@ -2,3 +2,25 @@
     background-color: blue;
     color: #fff;
 }
+
+#pbt-body > tr.title-row {
+    color: white;
+    background-color: blue;
+}
+
+#pbt-body > tr.main-row {
+    background-color: #71d01836;
+}
+
+#sbc-body > tr.title-row {
+    color: white;
+    background-color: blue;
+    }
+    
+#sbc-body > tr.main-row {
+    background-color: #71d01836;
+}
+
+hr {
+    margin: 0;
+}
