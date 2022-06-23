@@ -7,6 +7,7 @@ const pdfjs = require("pdfjs-dist/legacy/build/pdf.js");
 const multer  = require('multer')
 const carriers = ['aetna', 'cigna', 'unitedhealth', 'anthem', 'carefirst', 'blue cross'] 
 const xlsx = require('xlsx')
+let planInfo = {};
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -48,9 +49,31 @@ const pbtUpload = (req, res, next) => {
   getPBTContent(path, res)
 }
 
-async function parsePdf(pages, carrier) {
-
-}
+function pdfToText(url, separator = ' ') {
+  let pdf = pdfjs.getDocument(url);
+  return pdf.promise.then(function(pdf) { // get all pages text
+      let maxPages = pdf._pdfInfo.numPages;
+      let countPromises = []; // collecting all page promises
+      for (let i = 1; i <= maxPages; i++) {
+          let page = pdf.getPage(i);
+          countPromises.push(page.then(function(page) { // add page promise
+              let textContent = page.getTextContent();
+              return textContent.then(function(text) { // return content promise
+                  return text.items.map(function(obj) {
+                      return obj.str;
+                  }).join(separator); // value page text
+              });
+          }));
+      };
+      // wait for all pages and join text
+      return Promise.all(countPromises).then(function(texts) {
+          for(let i = 0; i < texts.length; i++){
+              texts[i] = texts[i].replace(/\s+/g, ' ').trim();
+          };
+          return texts;
+      });
+  });
+};
 
 async function getSBCContent(filename, res) {
   const doc = await pdfjs.getDocument(filename).promise // note the use of the property promise
@@ -69,7 +92,6 @@ async function getSBCContent(filename, res) {
       }
       lines = [];
       line = '';
-      planInfo = {}
       items.map((item, index) => {
         // Get Plan Names
         if (item.str.includes("UHC") && !planInfo['name']) planInfo['name'] = item.str
@@ -85,163 +107,307 @@ async function getSBCContent(filename, res) {
         if (item.str.includes("Plan Type") && !planInfo['planType']) planInfo['planType'] = item.str.replace('Plan Type:', '').trim()
         let n = item.str.search("Coverage for:")
         if (n === 0) {
-          console.log(item)
+          // console.log(item)
         }
       })
       // Get the level of coverage
       planInfo['levelOfCoverage'] = levelOfCoverage() 
     }
   })
-
-  res.status(200).json({cost: {}})
- 
+  
+  setTimeout(() => {
+    res.status(200).json(planInfo)
+  }, 2000)
 }
 
 
 
 async function getSOBContent(filename, res) {
-  const doc = await pdfjs.getDocument(filename).promise // note the use of the property promise
-  let pages = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-  
-  deductibleTableIndex = 0
-  maximumOutOfPocketTableIndex = 0
-  deductibleFamilyIndex = 0
-  deductibleIndividualIndex = 0
-  deductibleFamilyInNetworkIndex = 0
-  outOfPocketIndividualIndex = 0
-  outOfPocketFamilyIndex = 0
-  let individualDeductibleCost = []
-  let familyDeductibleCost = []
-  let individualOutOfPocketCost = []
-  let familyOutOfPocketCost = []
   hash = {}
-
-  pages.map(async(p) => {
-    if (p === 3) {
-      const page = await doc.getPage(p)
-      let data = await page.getTextContent()
-      let items = data.items
-      items.map((item, index) => {
-        // Get the deductible table in PDF
-        if (item.str.includes("You have to meet your")) deductibleTableIndex = index
-        if (item.str.includes("pocket limit")) maximumOutOfPocketTableIndex = index
-    
-        // Get the values from deductible tab
-        if (index >= deductibleTableIndex && index <= (deductibleTableIndex + 33)) {
-          if (item.str.includes('Individual')) deductibleIndividualIndex = index
-          if (item.str.includes('Family')) deductibleFamilyInNetworkIndex = index
-    
-          if (index >= deductibleIndividualIndex && index <= (deductibleIndividualIndex + 7)) {
-            // console.log(item.str)
-            if (item.str) individualDeductibleCost.push(item.str)
+  pdfToText(filename).then(function(pdfTexts) {
+    let arr = pdfTexts.map((page) => {
+      // Deductibles
+      if (page.includes('DEDUCTIBLES IN - NETWORK DEDUCTIBLE OUT - OF - NETWORK DEDUCTIBLE')) {
+        let ehbData = page.split('.');
+        let hasInNetworkDeductible;
+        let ebhIndiv = [];
+        let ehbFam = [];
+        ehbData.map((data, index) => {
+          if (data.includes('DEDUCTIBLES IN - NETWORK DEDUCTIBLE OUT - OF - NETWORK DEDUCTIBLE')) {
+            hasInNetworkDeductible = !ehbData[index].includes('no In - Network Deductible')
           }
-    
-          if (index >= deductibleFamilyInNetworkIndex && index <= (deductibleFamilyInNetworkIndex + 7)) {
-            if (item.str) familyDeductibleCost.push(item.str)
+        })
+
+        if (hasInNetworkDeductible) {
+          ehbData.map(d => {
+            if (d.includes('Individual Deductible is')) {
+              let ded = d.split('$');
+              ebhIndiv.push(ded[1])
+            }
+            if (d.includes('Family Deductible')) {
+              let ded = d.split('$');
+              ehbFam.push(ded[1])
+            }
+          })
+        }
+
+        if (!hasInNetworkDeductible) {
+          ehbData.map(d => {
+            if (d.includes('Individual Deductible')) {
+              let ded = d.split('$');
+              ebhIndiv.push(ded[1])
+            }
+            if (d.includes('Family Deductible')) {
+              let ded = d.split('$');
+              ehbFam.push(ded[1])
+            }
+          })
+        }
+
+        values = {
+          deductible: {
+            individual: ebhIndiv,
+            family: ehbFam
           }
         }
-    
-        // Get Maximum out of pocket cost
-        if (index >=  maximumOutOfPocketTableIndex && index <= ( maximumOutOfPocketTableIndex + 33)) {
-          if (item.str.includes('Individual')) outOfPocketIndividualIndex = index
-          if (item.str.includes('Family')) outOfPocketFamilyIndex = index
-    
-          if (index >= outOfPocketIndividualIndex && index <= (outOfPocketIndividualIndex + 6)) {
-            if (item.str) individualOutOfPocketCost.push(item.str)
+
+        let plan = page.split('[')[2].split(']')[0];
+        hash['plan'] = plan;
+        let metalLevel;
+        if (plan.includes('Platinum')) {
+          metalLevel = 'Platinum'
+        } else if (plan.includes('Gold')) {
+          metalLevel = 'Gold'
+        } else if (plan.includes('Silver')) {
+          metalLevel = 'Silver'
+        } else if (plan.includes('Bronze')) {
+          metalLevel = 'Bronze'
+        }
+        hash['metalLevel'] = metalLevel;
+
+        hash['Medical EHB Deductible'] = values;
+      }
+      // EO Deductibe
+
+      // OUT-OF-POCKET MAXIMUM
+      if (page.includes('OUT - OF - POCKET MAXIMUM IN - NETWORK OUT - OF - POCKET MAXIMUM OUT - OF - NETWORK OUT - OF - POCKET MAXIMUM')) {
+        let oopMax = page.split('.');
+        let hasInNetworkDeductible;
+        let oopIndiv = [];
+        let oopFam = [];
+        oopMax.map((data, index) => {
+          if (data.includes('OUT - OF - POCKET MAXIMUM IN - NETWORK OUT - OF - POCKET MAXIMUM OUT - OF - NETWORK OUT - OF - POCKET MAXIMUM')) {
+            hasInNetworkDeductible = !oopMax[index].includes('no In - Network Deductible')
           }
-    
-          if (index >= outOfPocketFamilyIndex && index <= (outOfPocketFamilyIndex + 6)) {
-            if (item.str) familyOutOfPocketCost.push(item.str)
+        })
+
+        if (hasInNetworkDeductible) {
+          oopMax.map(d => {
+            let data = d.split('$');
+            if (d.includes('The Individual Out - of - Pocket Maximum is ')) {
+              oopIndiv.push(data[1])
+            }
+            if (d.includes(' The Family Out - of - Pocket Maximum is') || d.includes(' The F amily Out - of - Pocket Maximum is ')) {
+              oopFam.push(data[1])
+            }
+            
+          })
+        }
+
+        if (!hasInNetworkDeductible) {
+          oopMax.map(d => {
+            if (d.includes('Individual Out-of-Pocket Maximum is')) {
+              let ded = d.split('$');
+              ebhIndiv.push(ded[1])
+            }
+            if (d.includes('Family Out-of-Pocket Maximum is')) {
+              let ded = d.split('$');
+              ehbFam.push(ded[1])
+            }
+          })
+        }
+        values = {
+          deductible: {
+            individual: oopIndiv,
+            family: oopFam
           }
         }
-    
-      })
-    
-      if (individualDeductibleCost) hash['inNetworkIndividualDeductible'] = individualDeductibleCost.join('').split('Individual')[1].trim().split(' ')[0]
-      if (familyDeductibleCost) hash['inNetworkFamilyDeductible'] = familyDeductibleCost.join('').split('Family')[1].trim().split(' ')[0]
-      if (individualOutOfPocketCost) hash['inNetworkIndividualOutOfPocketLimit'] = individualOutOfPocketCost.join('').split('Individual')[1].trim().split(' ')[0]
-      if (familyOutOfPocketCost) hash['inNetworkFamilyOutOfPocketLimit'] = familyOutOfPocketCost.join('').split('Family')[1].trim().split(' ')[0]
-    } else if (p === 5) {
+        hash['Maximum Out of Pocket for Medical and Drug EHB Benefits (Total)'] = values;
+      }
+      // END OUT-OF-POCKET MAXIMUM
 
-    } else if (p === 6) {
-      const page = await doc.getPage(p)
-      let data = await page.getTextContent()
-      let items = data.items
-      items.map((item, index) => {
-        console.log(item)
-        console.log(index)
-        // Get the deductible table in PDF
-        if (item.str.includes("You have to meet your")) deductibleTableIndex = index
-        if (item.str.includes("pocket limit")) maximumOutOfPocketTableIndex = index
-      })
-    }
+      // OUTPATIENT FACILITY, OFFICE AND PROFESSIONAL SERVICES
+      if (page.includes('OUTPATIENT FACILITY, OFFICE AND PROFESSIONAL SERVICES')) {
+        let data = page.split('.').pop();
+        let words = data.split(' ');
+        let percentages = words.filter(word => word.includes('%'));
+        let prices = words.filter(word => word.includes('$'));
+        let details = {};
+        details['physicianOffice'] = {
+          pcp: prices[0],
+          specialist: prices[1],
+          clinicVisit: prices[2],
+          percentages: [percentages[0]]
+        }
+        details['outPatientNonSurgical'] = {
+          pcp: prices[3],
+          specialist: prices[4],
+          clinicVisit: prices[5],
+          percentages: [percentages[0]]
+        }
+
+        hash['Primary Care Visit to Treat an Injury or Illness'] = details;
+        hash['Specialist Visit'] = details;
+        hash['Other Practitioner Office Visit (Nurse, Physician Assistant)'] = details;
+        hash['Outpatient Facility Fee (e.g., Ambulatory Surgery Center)'] = details;      
+      }
+      // Laboratory Tests, X-Ray/Radiology Services, Specialty Imaging and Diagnostic Procedures
+      if (page.includes('Non - Preventive Laboratory Tests')) {
+        let data = page.split('.');
+        let length = data.length - 1;
+        let types = ['Non-Preventive Laboratory Tests (independent non-hospital laboratory)', 'Non-Preventive Laboratory Tests (outpatient department of a hospital)', 'Non-Preventive X-Ray/Radiology Services (independent non-hospital facility)',
+        'Non-Preventive X-Ray/Radiology Services (outpatient department of a hospital)', 'Non-Preventive Specialty Imaging (independent non-hospital facility)', 'Non-Preventive Specialty Imaging (outpatient department of a hospital)',
+        'Non-Preventive Diagnostic Testing except as otherwise specified (in an independent non-hospital facility)'];
+        
+        data.map((word, index) => {
+         word = word.split('  ');
+         if (index == length) {
+          // Try to parse
+          let phrase = word[0].replace(/\s/g, '');
+          phrase.split('$').map((word, index) => {
+            if (word.includes('pervisit')) {
+              let price = word.split('pervisit')[0];
+              let percentages = word.split('pervisit')[1].split('%')[0];
+              let networkType = word.includes('In-NetworkandOut-of-Network') ? 'In-Network and Out-of-Network' : 'Out-of-Network';
+              let values = {}
+              values['key'] = types[index -1];
+              values['price'] = price;
+              values['percentages'] = percentages;
+              values['networkType'] = networkType;
+  
+              hash[types[index -1]] = values;
+            }
+          })
+         }
+        })
+      }
+      // END of Laboratory Tests, X-Ray/Radiology Services, Specialty Imaging and Diagnostic Procedures
+
+      // Preventative care
+      if (page.includes('Sleep Studies')) {
+        let data = page.split('.');
+        let length = data.length - 1;
+        let types = ['Non-Preventive Diagnostic Testing except as otherwise specified (in an outpatient department of a hospital)', 'Sleep Studies (Member’s home)',
+        'Sleep Studies (office or freestanding facility)', 'Sleep Studies (outpatient department of a hospital)'];
+
+        data.map((word, index) => {
+          let phrase = word.replace(/\s/g, '');
+          phrase.split('$').map(word => {
+            if (word.includes('per')) {
+              let price = word.split('per')[0];
+              let percentages = word.split('per')[1].split('%')[0].replaceAll('visit', '').replaceAll('study', '');
+              let networkType = word.includes('In-NetworkandOut-of-Network') ? 'In-Network and Out-of-Network' : 'Out-of-Network';
+            }
+          })
+        });
+
+        let screenTypes = ['Prostate Cancer Screening', 'Colorectal Cancer Screening', 'Pap Smear',
+        'Breast Cancer Screening', 'Human Papillomavirus Screening Test', 'Preventive Laboratory Tests', 'Preventive X-Ray/Radiology Services'];
+
+        let options = [];
+        let services = [];
+        let keys = screenTypes.map((type) => type.replace(/\s/g, ''));
+
+        data.map((word, index) => {
+          let data = page.split('.');
+          let length = data.length - 1;
+          let phrase = word.replace(/\s/g, '');
+          phrase.split('$').map(word => {
+            if (word.includes('Copaymentor')) {
+              services.push(word)
+            }
+          })
+        })
+        // Removes paragraph text
+        services = services.splice(1)
+      }
+      // Preventative care 
+    })
+    return res.status(200).json(hash)
   })
-  setTimeout(() => {
-    return res.status(200).json({cost: hash})
-  }, 1000)
 }
 
 async function getPBTContent(filename, res) {
   let workbook = xlsx.readFile(filename);
-  let benefitWs = workbook.Sheets['Benefits Package 1']
-  let costWs = workbook.Sheets['Cost Share Variances 1']
-  let bpHeadings = []
-  let bpTData = []
-  let csHeadings = []
-  let csTData = []
+  let sheets = workbook.SheetNames;
+  let costShareSheets = sheets.filter((sheet) => sheet.includes('Cost Share'))
+  let workSheets = [];
+  let selectOptions = []
+  let headingTableRows = workbook.Sheets[costShareSheets[0]];
+  let tableHeadingRow;
+  let tableSubHeadingRow;
+  let tableTitlesRow;
+  let data;
 
-  const bpHeaders = new Promise((res, reject) => {
-    benefitWs['!ref'] = "A6:AF6"
-    res(xlsx.utils.sheet_to_json(benefitWs, {header: 1, defval: ''}))
-  })
+  costShareSheets.map((costSheet, index) => {
+    workSheets[costSheet] = [];
+    let currentSheet = workbook.Sheets[costSheet];
+    let data = xlsx.utils.sheet_to_json(currentSheet, {header: 1, defval: ''})
 
-  const bpData = new Promise((res, reject) => {
-    benefitWs['!ref'] = "A7:AF8"
-    res(xlsx.utils.sheet_to_json(benefitWs, {header: 0, defval: ''}))
-  })
-
-  const csHeaders = new Promise((res, reject) => {
-    costWs['!ref'] = "A2:AAC2"
-    res(xlsx.utils.sheet_to_json(costWs, {header: 1, defval: ''}))
-  })
-
-  const csData = new Promise((res, reject) => {
-    costWs['!ref'] = "A3:AAC4"
-    res(xlsx.utils.sheet_to_json(costWs, {header: 0, defval: ''}))
-  })
-
-  await bpHeaders.then(res => {
-    res[0].map((key, index) => {
-      if (key !== '') bpHeadings.push({name: key, index, heading: true})
+    data.map((d, index) => {
+      if (d[0] && d[0].split('-')[1] && d[0].split('-')[1].includes(01)) {
+        workSheets[costSheet].push(d)
+        selectOptions.push({key: d[0], name: d[1], sheet: costSheet})
+      }
     })
   })
-
-  await csHeaders.then(res => {
-    res[0].map((key, index) => {
-      if (key !== '') csHeadings.push({name: key, index, heading: true})
-    })
+  // Builds titles for tables
+  let titles = new Promise((res, reject) => {
+    headingTableRows['!ref'] = "A1:AAC1"
+    res(xlsx.utils.sheet_to_json(headingTableRows, {header: 1, defval: ''}))
   })
-
-  await bpData.then(res => {
-    const entries = Object.entries(res[0])
-    entries.map((entry, index) => {
-      bpTData.push({key: entry[0].split('_')[0], value: entry[1], index, heading: false})
-    })
+  // Builds headings for table
+  let headings = new Promise((res, reject) => {
+    headingTableRows['!ref'] = "A2:AAC2"
+    res(xlsx.utils.sheet_to_json(headingTableRows, {header: 1, defval: ''}))
   })
-
-  await csData.then(res => {
-    const entries = Object.entries(res[0])
-    entries.map((entry, index) => {
-      csTData.push({key: entry[0].split('_')[0], value: entry[1], index, heading: false})
-    })
+  // Builds subheadings for table
+  let subHeadings = new Promise((res, reject) => {
+    headingTableRows['!ref'] = "A3:AAC3"
+    res(xlsx.utils.sheet_to_json(headingTableRows, {header: 1, defval: ''}))
   })
-
-  return res.status(200).json({headers: { benefitsPackage: bpHeadings, costShare: csHeadings}, tableData: { benefitsPackage: bpTData.reverse(), costShare: csTData.reverse() }})
-
+ 
+  Promise.all([titles, headings, subHeadings])
+    .then((values, index) => {
+      tableTitlesRow = values[0]
+      tableHeadingRow = values[1];
+      tableSubHeadingRow = values[2];
+    })
+    .then(() => {
+      data = {
+        selectOptions,
+        tableTitlesRow,
+        tableHeadingRow,
+        tableSubHeadingRow,
+        filename
+      }
+    })
+    .then(() => {
+      return res.status(200).json(data)
+    })
 }
 
 app.get('/', (req, res) => {
   res.send('home')
+})
+
+app.get('/costvariances/:key/:name/:sheet/:filename', (req, res) => {
+  let workbook = xlsx.readFile(`uploads/${req.params.filename}`);
+  let sheet = workbook.Sheets[req.params.sheet];
+  let data = xlsx.utils.sheet_to_json(sheet, {header: 1, defval: ''})
+
+  let tableData = data.find(d => d[0] === req.params.key)
+  return res.status(200).json({data: tableData})
 })
 
 app.post('/sbcUpload', uploader.single('sbc'), sbcUpload)

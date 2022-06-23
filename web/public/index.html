@@ -32,37 +32,79 @@
         -->
         <div class="col-4">
             <h3>PBT</h3>
-            <div class="input-group mb-3">
-                <form enctype="multipart/form-data" method="post" name="pbtinfo">
-                    <input type="file" class="form-control" id="pbt" name="pbt" onchange="parseFile('pbt')">
-                </form>
+            <div class="row">
+							<div class="col-12">
+								<form enctype="multipart/form-data" method="post" name="pbtinfo">
+									<input type="file" class="form-control" id="pbt" name="pbt" onchange="parseFile('pbt')">
+								</form>
+							</div>
             </div>
+            <div class="row">
+							<div class="col-12">
+								<select class="form-select mt-2 d-none" aria-label="Default select example" id="plan-select" onchange="getPlanInformation('pbt')">
+									<option selected>Select Plan</option>
+								</select>
+							</div>
+            </div>
+
+            <div class="mt-2">
+                <p id="pbt-hios"></p>
+            </div>
+            <div class="mt-2">
+                <p id="pbt-metal-level"></p>
+            </div>
+
             <table class="table table-bordered table-striped">
                 <tbody id="pbt-body"></tbody>
               </table>
         </div>
         <div class="col-4">
-            <h3>SBC</h3>
-            <div class="input-group mb-3">
-                <form enctype="multipart/form-data" method="post" name="sbcinfo">
-                    <input type="file" class="form-control" id="sbc" name="sbc" onchange="parseFile('sbc')">
-                </form>
-            </div>
-            <table class="table table-bordered table-striped">
-                <tbody id="sbc-body"></tbody>
-              </table>
-        </div>
-        <div class="col-4">
             <h3>SOB</h3>
-            <div class="input-group mb-3">
-                <form enctype="multipart/form-data" method="post" name="sobinfo">
-                    <input type="file" class="form-control" id="sob" name="sob" onchange="parseFile('sob')">
-                </form>
+            <div class="row">
+							<div class="col-12">
+								<form enctype="multipart/form-data" method="post" name="sobinfo">
+										<input type="file" class="form-control" id="sob" name="sob" onchange="parseFile('sob')" disabled="true">
+								</form>
+							</div>
+						</div>
+						<div class="row">
+							<div class="col-12">
+								<select class="form-select mt-2 d-none" aria-label="Default select example" id="sob-select" disabled>
+									<option selected id="sob-option"></option> 
+								</select>
+							</div>
+						</div>                
+
+            <div class="mt-2">
+                <p id="sob-hios"></p>
             </div>
-            <table class="table table-bordered table-striped">
-                <tbody id="sob-body"></tbody>
-              </table>
+            <div class="mt-2">
+                <p id="sob-metal-level"></p>
+            </div>
+
+            <table class="table table-bordered table-striped" id="sob-table"></table>
         </div>
+				<div class="col-4">
+					<h3>SBC</h3>
+					<div class="input-group mb-3">
+							<form enctype="multipart/form-data" method="post" name="sbcinfo">
+									<input type="file" class="form-control" id="sbc" name="sbc" onchange="parseFile('sbc')" disabled="true">
+							</form>
+
+							<select class="form-select mt-2 d-none" aria-label="Default select example" id="sbc-select" disabled>
+								<option selected id="sbc-option"></option>
+							</select>
+					</div>
+
+					<div class="mt-2">
+							<p id="sbc-hios"></p>
+					</div>
+					<div class="mt-2">
+							<p id="sbc-metal-level"></p>
+					</div>
+
+					<table class="table table-bordered table-striped" id="sbc-table"></table>
+			</div>
     </div>
 </div>
 
