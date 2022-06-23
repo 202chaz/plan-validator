@@ -7,6 +7,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - '3000:3000'
+    networks:
+      - hbx-network
   nginx:
     restart: always
     build:
@@ -14,5 +16,10 @@ services:
       dockerfile: Dockerfile.production
     ports:
       - "80:80"
+    networks:
+      - hbx-network
     volumes:
       - $PWD/nginx/configs/production/upstream.conf:/etc/nginx/conf.d/upstream.conf
+networks:
+  hbx-network:
+    driver: bridge
